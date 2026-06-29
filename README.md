@@ -1,20 +1,22 @@
-# Python Logs API
+# PoC Observabilidade: Logs
 
-PoC mínima para gerar, exportar e visualizar logs de uma aplicação Python com FastAPI. O projeto é focado somente em logs nesta fase e não deve ser usado como base de produção.
+PoC de uma stack mínima de monitoramento e observabilidade, neste primeiro estágio focada exclusivamente em **logs**.
+
+A API Python com FastAPI existe apenas como aplicação de apoio para gerar logs de teste. O foco do projeto é validar o fluxo de geração, coleta, armazenamento, consulta e visualização de logs usando OpenTelemetry, Grafana Alloy, Loki e Grafana.
 
 ## Objetivo
 
-Executar uma aplicação Python simples que gera logs com o `logging` padrão, usar OpenTelemetry auto-instrumentation para exportar esses logs via OTLP, receber os logs no Grafana Alloy, armazená-los no Loki e consultá-los no Grafana.
+Executar uma aplicação mínima que gera logs com o `logging` padrão do Python, capturar esses logs com OpenTelemetry auto-instrumentation, enviá-los via OTLP para o Grafana Alloy, armazená-los no Loki e visualizá-los no Grafana.
 
-Métricas e traces estão fora do escopo desta fase. A escolha por OpenTelemetry mantém a instrumentação desacoplada da aplicação e facilita adicionar novos sinais futuramente.
+Métricas e traces estão fora do escopo desta fase da PoC.
 
 ## Stack
 
-- Python 3.12, FastAPI e Uvicorn
-- OpenTelemetry Python auto-instrumentation
-- Grafana Alloy como receptor OTLP e encaminhador de logs
-- Loki para armazenamento e consulta de logs
-- Grafana para visualização
+- OpenTelemetry com autoinstrumentação
+- Grafana Alloy para receber logs via OTLP e encaminhá-los
+- Grafana Loki para armazenamento e consulta dos logs
+- Grafana para visualização dos logs
+- API mínima em Python 3.12, FastAPI e Uvicorn para gerar logs de teste
 - Docker Compose para execução local
 
 ## Arquitetura
@@ -28,7 +30,7 @@ Aplicação Python
           -> Grafana
 ```
 
-A aplicação não usa bibliotecas específicas de Loki e não envia logs diretamente para o Loki. Ela apenas emite logs com o `logging` padrão do Python; o OpenTelemetry captura e exporta os registros para o Alloy.
+A aplicação não envia logs diretamente para o Loki. Ela apenas emite logs com o `logging` padrão do Python; o OpenTelemetry captura e exporta os registros para o Alloy, que encaminha os logs para o Loki.
 
 ## Executar com Docker Compose
 
@@ -58,25 +60,9 @@ Para encerrar e remover os volumes da PoC:
 docker compose down -v
 ```
 
-## Configuração OpenTelemetry
+## Gerar logs
 
-A aplicação é executada com `opentelemetry-instrument`. No Compose, os sinais são configurados por variáveis de ambiente:
-
-```env
-OTEL_SERVICE_NAME=python-logs-api
-OTEL_EXPORTER_OTLP_ENDPOINT=http://alloy:4318
-OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
-OTEL_LOGS_EXPORTER=otlp
-OTEL_TRACES_EXPORTER=none
-OTEL_METRICS_EXPORTER=none
-OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED=true
-```
-
-O Alloy expõe OTLP em `4317` e `4318`, recebe somente logs e os encaminha para o Loki.
-
-## Acessar a aplicação
-
-Use o Swagger em <http://localhost:8000/docs> ou execute chamadas com `curl`.
+Use o Swagger em <http://localhost:8000/docs> e execute os endpoints disponíveis. Também é possível chamar a API com `curl`:
 
 ```bash
 curl -i http://localhost:8000/health
@@ -86,31 +72,19 @@ curl -i http://localhost:8000/latency
 curl -i http://localhost:8000/error/unhandled
 ```
 
-## Acessar o Grafana
+Depois de chamar os endpoints, aguarde alguns segundos para o OpenTelemetry exportar os logs e o Alloy encaminhá-los ao Loki.
+
+## Visualizar logs
 
 Abra <http://localhost:3000>. No primeiro acesso, use `admin` / `admin` e defina uma nova senha quando solicitado.
 
-O datasource `Loki` é provisionado automaticamente e definido como padrão.
+O datasource `Loki` e o dashboard `Logs` são provisionados automaticamente. Para visualizar os logs, acesse o dashboard `Logs` no Grafana.
 
-## Consultar logs no Grafana
-
-1. Acesse `Explore`.
-2. Selecione o datasource `Loki`.
-3. Execute uma consulta LogQL:
+Também é possível consultar os logs em `Explore`, selecionando o datasource `Loki` e executando uma consulta LogQL:
 
 ```logql
 {service_name="python-logs-api"}
 ```
-
-Consultas úteis:
-
-```logql
-{service_name="python-logs-api"} |= "duration_ms"
-{service_name="python-logs-api"} |= "WARNING"
-{service_name="python-logs-api"} |= "ERROR"
-```
-
-Depois de chamar os endpoints, aguarde alguns segundos para o OpenTelemetry exportar os logs e o Alloy encaminhá-los ao Loki.
 
 ## Endpoints para gerar logs
 
@@ -122,6 +96,22 @@ Depois de chamar os endpoints, aguarde alguns segundos para o OpenTelemetry expo
 | `GET /latency` | 200 | Latência simulada entre 100 e 5000 ms |
 | `GET /error/unhandled` | 500 | Exceção proposital para gerar log de erro |
 
+## Configuração OpenTelemetry
+
+A aplicação é executada com `opentelemetry-instrument`. No Compose, os sinais são configurados por variáveis de ambiente para exportar somente logs:
+
+```env
+OTEL_SERVICE_NAME=python-logs-api
+OTEL_EXPORTER_OTLP_ENDPOINT=http://alloy:4318
+OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+OTEL_LOGS_EXPORTER=otlp
+OTEL_TRACES_EXPORTER=none
+OTEL_METRICS_EXPORTER=none
+OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED=true
+```
+
+O Alloy expõe OTLP em `4317` e `4318`, recebe os logs e os encaminha para o Loki.
+
 ## Limitações da PoC
 
 - Sem banco de dados.
@@ -132,4 +122,4 @@ Depois de chamar os endpoints, aguarde alguns segundos para o OpenTelemetry expo
 - Sem garantias de retenção, segurança, disponibilidade ou escala.
 - Configuração local com volumes Docker, inadequada para produção.
 
-Este projeto é apenas uma PoC de logs para desenvolvimento e estudo.
+Este projeto é apenas uma PoC local de observabilidade para desenvolvimento e estudo.
